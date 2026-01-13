@@ -60,36 +60,107 @@ The script currently exports a single component's flat pattern to DXF format. It
 
 ## Implementation Tasks
 
-### Task 1: Folder Selection (Early)
+### Task Dependency Summary
+
+```
+INDEPENDENT TASKS (can be done in any order):
+├─ Task 1: Folder Selection
+├─ Task 3: Component Type Detection  
+├─ Task 9: File Naming & Duplicate Handling
+├─ Task 10: Progress Feedback
+└─ Task 11: Error Handling & Reporting
+
+FOUNDATION CHAIN (sequential dependencies):
+Task 3 → Task 4 → Task 5
+                └─→ Task 6
+
+EXECUTION TASKS (depend on all foundations):
+Task 7 (External) ──┐
+                    ├─→ Requires: Tasks 1, 4, 5, 6, 9, 10, 11
+Task 8 (Internal) ──┘
+
+SPECIAL CASE:
+Task 2: External Update Check
+  └─→ Can be independent OR depend on Task 4
+```
+
+### Task Dependency Overview
+
+**Independent Tasks** (can be developed in parallel or any order):
+- Task 1: Folder Selection
+- Task 3: Component Type Detection
+- Task 9: File Naming & Duplicate Handling (utility function)
+- Task 10: Progress Feedback (utility function)
+- Task 11: Error Handling & Reporting (utility function)
+
+**Foundation Tasks** (must complete before dependent tasks):
+- Task 1 → Required by: Tasks 7, 8
+- Task 3 → Required by: Task 4
+- Task 4 → Required by: Tasks 2, 5, 6, 7, 8
+- Task 5 → Required by: Tasks 7, 8
+- Task 6 → Required by: Tasks 7, 8
+- Task 9 → Required by: Tasks 7, 8
+- Task 10 → Required by: Tasks 7, 8
+
+**Execution Tasks** (depend on multiple foundation tasks):
+- Task 7: External Component Handling → Depends on: Tasks 1, 4, 5, 6, 9, 10, 11
+- Task 8: Internal Component Handling → Depends on: Tasks 1, 4, 5, 6, 9, 10, 11
+
+**Special Case**:
+- Task 2: External Component Update Check → Can be independent OR depends on Task 4 (if checking during traversal)
+
+---
+
+### Task 1: Folder Selection (Early) ⭐ INDEPENDENT
+**Status**: Independent - Can be done first
+**Dependencies**: None
+**Required By**: Tasks 7, 8
 - Move folder selection dialog to the beginning
 - Store output folder path for all exports
 
-### Task 2: External Component Update Check
+### Task 2: External Component Update Check ⚠️ CONDITIONAL
+**Status**: Can be independent OR depend on Task 4
+**Option A (Independent)**: Check all external components before any traversal
+**Option B (During Traversal)**: Check external components as they're discovered in Task 4
+**Dependencies**: None (if Option A) OR Task 4 (if Option B)
+**Required By**: None (validation step, can abort early)
 - Before starting exports, check all external/referenced components
 - Use API to detect if components need updating
 - If updates needed: Show message box prompting user to update external components
 - Abort script execution if updates are required
 - Research API methods: `Component.isUpToDate` or similar
 
-### Task 3: Component Type Detection
+### Task 3: Component Type Detection ⭐ INDEPENDENT
+**Status**: Independent - Foundation task
+**Dependencies**: None
+**Required By**: Task 4
 - Detect if current design is single component vs assembly
 - Check `design.rootComponent` vs `design.allComponents`
 - Determine if component is root-level or has children
 
-### Task 4: Hierarchy Traversal & Sheet Metal Detection
+### Task 4: Hierarchy Traversal & Sheet Metal Detection 🔗 FOUNDATION
+**Status**: Depends on Task 3
+**Dependencies**: Task 3
+**Required By**: Tasks 2 (if Option B), 5, 6, 7, 8
 - Recursively traverse component hierarchy
 - **Filter**: Only process components with sheet metal bodies (`body.isSheetMetal`)
 - Build list of components that need flat pattern export
 - Handle both direct components and occurrences
 - Skip components without sheet metal (they can't have flat patterns)
 
-### Task 5: External Component Detection
-- Identify external/referenced components
+### Task 5: External Component Detection 🔗 FOUNDATION
+**Status**: Depends on Task 4
+**Dependencies**: Task 4 (needs list of components)
+**Required By**: Tasks 7, 8
+- Identify external/referenced components from the component list
 - Use API to check if component is external (likely `component.isReferenced` or `occurrence.isReferencedComponent`)
-- Track which components are external vs internal
+- Classify each component as external vs internal
 - Store reference to original document for restoration
 
-### Task 6: Flat Pattern Check & Creation
+### Task 6: Flat Pattern Check & Creation 🔗 FOUNDATION
+**Status**: Depends on Task 4
+**Dependencies**: Task 4 (needs list of components)
+**Required By**: Tasks 7, 8
 - For each component, check if flat pattern exists (`component.flatPattern`)
 - If missing: Auto-create using existing logic (find largest planar face)
 - If exists: **Update the flat pattern** before exporting
@@ -97,34 +168,57 @@ The script currently exports a single component's flat pattern to DXF format. It
   - Ensure flat pattern reflects current geometry state
 - Handle errors gracefully (skip components that fail)
 
-### Task 7: External Component Handling
+### Task 7: External Component Handling 🎯 EXECUTION
+**Status**: Depends on multiple foundation tasks
+**Dependencies**: Tasks 1 (folder), 4 (component list), 5 (external detection), 6 (flat pattern), 9 (naming), 10 (progress), 11 (error handling)
+**Required By**: None (end task)
 - Open external component in new tab/document (bring to front)
 - Activate the component in the opened document
-- Export flat pattern
+- Export flat pattern using Task 6 logic
+- Use Task 9 for filename generation
+- Use Task 10 for progress updates
+- Use Task 11 for error tracking
 - Close the opened document (without saving - should be unchanged)
 - Restore original document context
 - Track original active component/document for restoration
 
-### Task 8: Internal Component Handling
+### Task 8: Internal Component Handling 🎯 EXECUTION
+**Status**: Depends on multiple foundation tasks
+**Dependencies**: Tasks 1 (folder), 4 (component list), 5 (internal detection), 6 (flat pattern), 9 (naming), 10 (progress), 11 (error handling)
+**Required By**: None (end task)
 - Activate component (set as active)
-- Export flat pattern
+- Export flat pattern using Task 6 logic
+- Use Task 9 for filename generation
+- Use Task 10 for progress updates
+- Use Task 11 for error tracking
 - Continue to next component
 - Track original active component to restore at end
 
-### Task 9: File Naming & Duplicate Handling
+### Task 9: File Naming & Duplicate Handling ⭐ INDEPENDENT (Utility)
+**Status**: Independent - Utility function
+**Dependencies**: None
+**Required By**: Tasks 7, 8
 - Use component name only: `SubComponent.dxf` (not `Parent_SubComponent.dxf`)
 - Sanitize filename (replace illegal characters like `:` with `_`)
 - Track exported filenames
 - If duplicate detected: Append number (`Component_1.dxf`, `Component_2.dxf`, etc.)
 - Maintain counter per base filename
+- Can be implemented as standalone function
 
-### Task 10: Progress Feedback
+### Task 10: Progress Feedback ⭐ INDEPENDENT (Utility)
+**Status**: Independent - Utility function
+**Dependencies**: None
+**Required By**: Tasks 7, 8
 - Show progress messages during batch export
 - Format: "Exporting component X of Y: ComponentName"
 - Update UI during processing
 - Display in message box or status area
+- Can be implemented as standalone function
 
-### Task 11: Error Handling & Reporting
+### Task 11: Error Handling & Reporting ⭐ INDEPENDENT (Utility)
+**Status**: Independent - Utility function
+**Dependencies**: None
+**Required By**: Tasks 7, 8 (and used throughout)
 - Continue processing on individual failures
 - Collect error messages per component
 - Track successful vs failed exports
@@ -132,6 +226,55 @@ The script currently exports a single component's flat pattern to DXF format. It
   - "X of Y components exported successfully"
   - List any failures with component names
   - Show list of exported file paths
+- Can be implemented as standalone class or functions
+
+## Recommended Implementation Order
+
+### Phase 1: Foundation & Utilities (Can be done in parallel)
+**Goal**: Build reusable components and foundational logic
+
+1. **Task 1**: Folder Selection (Early) - Quick win, moves existing code
+2. **Task 9**: File Naming & Duplicate Handling - Utility function, testable independently
+3. **Task 10**: Progress Feedback - Utility function, testable independently
+4. **Task 11**: Error Handling & Reporting - Utility class/functions, testable independently
+5. **Task 3**: Component Type Detection - Foundation logic
+
+### Phase 2: Component Discovery (Sequential)
+**Goal**: Find and classify all components that need exporting
+
+6. **Task 4**: Hierarchy Traversal & Sheet Metal Detection - Depends on Task 3
+7. **Task 5**: External Component Detection - Depends on Task 4
+8. **Task 2**: External Component Update Check - Can integrate with Task 4 or do separately
+
+### Phase 3: Flat Pattern Management (Sequential)
+**Goal**: Ensure flat patterns exist and are current
+
+9. **Task 6**: Flat Pattern Check & Creation - Depends on Task 4
+
+### Phase 4: Export Execution (Sequential)
+**Goal**: Implement the actual export logic
+
+10. **Task 8**: Internal Component Handling - Depends on all previous tasks
+11. **Task 7**: External Component Handling - Depends on all previous tasks
+
+### Alternative: Incremental Development Approach
+
+**Iteration 1**: Single Component (Current functionality + improvements)
+- Task 1: Folder Selection
+- Task 6: Flat Pattern Check & Creation (enhance existing)
+- Task 9: File Naming
+- Task 11: Error Handling
+
+**Iteration 2**: Assembly Support (Internal components only)
+- Task 3: Component Type Detection
+- Task 4: Hierarchy Traversal
+- Task 5: External Component Detection (identify, but skip external for now)
+- Task 8: Internal Component Handling
+- Task 10: Progress Feedback
+
+**Iteration 3**: External Component Support
+- Task 2: External Component Update Check
+- Task 7: External Component Handling
 
 ## API Research Needed
 
