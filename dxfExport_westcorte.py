@@ -316,12 +316,14 @@ def traverse_hierarchy_for_sheet_metal(component, result_list=None):
         # It's a Component
         comp = component
     
-    # Check if this component has sheet metal bodies
+    # Check if this component has sheet metal bodies and hasn't been added yet
     if comp and has_sheet_metal_bodies(comp):
-        result_list.append({
-            'component': comp,
-            'occurrence': occurrence
-        })
+        # Avoid duplicates - only add if this component isn't already in the list
+        if not any(entry['component'] == comp for entry in result_list):
+            result_list.append({
+                'component': comp,
+                'occurrence': occurrence
+            })
     
     # Recursively traverse child occurrences
     if comp:
@@ -356,48 +358,20 @@ def detect_external_components(component_list, design):
     for comp_info in component_list:
         component = comp_info['component']
         occurrence = comp_info['occurrence']
-        
+
+        # Simplify external component detection using the reliable API
         is_external = False
         source_document = None
-        
-        # Check if component is external/referenced
-        # External components are typically accessed via occurrences
-        if occurrence:
-            # Check if occurrence represents a referenced component
-            # In Fusion 360 API, occurrences of external components have specific properties
+
+        if occurrence and occurrence.isReferencedComponent:
+            # Primary check: occurrence represents a referenced (external) component
+            is_external = True
             try:
-                # Try to access the component's document
-                # External components come from different documents
-                comp_doc = component.parentDocument
-                current_doc = design.parentDocument
-                
-                # If documents are different, it's external
-                if comp_doc and current_doc and comp_doc != current_doc:
-                    is_external = True
-                    source_document = comp_doc
-                elif occurrence.isReferencedComponent:
-                    # Alternative check: occurrence property
-                    is_external = True
-                    # Try to get source document from occurrence
-                    try:
-                        source_document = occurrence.component.parentDocument
-                    except:
-                        pass
+                source_document = occurrence.component.parentDocument
             except:
-                # If we can't determine, assume internal
+                # Source document may not be accessible, but that's okay
                 pass
-        
-        # Also check if component itself is marked as referenced
-        try:
-            if hasattr(component, 'isReferenced') and component.isReferenced:
-                is_external = True
-                try:
-                    source_document = component.parentDocument
-                except:
-                    pass
-        except:
-            pass
-        
+
         result_list.append({
             'component': component,
             'occurrence': occurrence,
@@ -410,111 +384,36 @@ def detect_external_components(component_list, design):
 def check_external_component_updates(classified_components, design, ui=None):
     """
     Task 2: External Component Update Check
-    
-    Checks if any external/referenced components need updating.
-    If updates are required, prompts the user and returns False to abort execution.
-    
-    Uses Option B: Checks external components after they're discovered via Task 4/5.
-    
+
+    Checks if external/referenced components need updating using document-level APIs.
+    Uses design.parentDocument.isUpToDate and document.updateAllReferences().
+
     Args:
         classified_components: List of component info dicts from Task 5
                               Each dict has 'component', 'occurrence', 'is_external', 'source_document'
         design: The Fusion 360 Design object
         ui: Optional UI object for displaying messages (required for user prompts)
-        
+
     Returns:
         tuple: (all_up_to_date: bool, components_needing_update: list)
-               - all_up_to_date: True if all external components are up-to-date, False otherwise
-               - components_needing_update: List of component names that need updating
+               - all_up_to_date: True if document is up-to-date, False if updates are needed
+               - components_needing_update: List of component names (empty if all up-to-date, or generic message)
     """
-    components_needing_update = []
-    
-    # Filter to only external components
-    external_components = [comp_info for comp_info in classified_components if comp_info['is_external']]
-    
-    if not external_components:
-        # No external components, so nothing to check
-        return (True, [])
-    
-    # Check each external component for update status
-    for comp_info in external_components:
-        component = comp_info['component']
-        occurrence = comp_info['occurrence']
-        component_name = component.name
-        
-        needs_update = False
-        
-        # Try multiple API methods to check if component needs updating
-        # Method 1: Check occurrence property (if available)
-        if occurrence:
-            try:
-                # Some Fusion 360 APIs have isUpToDate on occurrences
-                if hasattr(occurrence, 'isUpToDate'):
-                    if not occurrence.isUpToDate:
-                        needs_update = True
-                # Alternative: check for updateAvailable property
-                elif hasattr(occurrence, 'updateAvailable'):
-                    if occurrence.updateAvailable:
-                        needs_update = True
-            except:
-                pass
-        
-        # Method 2: Check component property (if available)
-        if not needs_update:
-            try:
-                if hasattr(component, 'isUpToDate'):
-                    if not component.isUpToDate:
-                        needs_update = True
-                elif hasattr(component, 'updateAvailable'):
-                    if component.updateAvailable:
-                        needs_update = True
-            except:
-                pass
-        
-        # Method 3: Check via document reference
-        # External components that are out of date may have different document states
-        if not needs_update and comp_info['source_document']:
-            try:
-                source_doc = comp_info['source_document']
-                current_doc = design.parentDocument
-                
-                # If documents are different, check if source document has unsaved changes
-                # or if component reference is stale
-                # Note: This is a heuristic - the actual API method may vary
-                if source_doc != current_doc:
-                    # Try to check document modification status
-                    # External components that need updating often have this property
-                    if hasattr(source_doc, 'isModified'):
-                        # This might indicate the external file has been modified
-                        # But we need to check component-specific update status
-                        pass
-            except:
-                pass
-        
-        # Method 4: Check all occurrences in design for this component
-        # Sometimes the update status is tracked at the occurrence level
-        if not needs_update:
-            try:
-                root_comp = design.rootComponent
-                for occ in root_comp.allOccurrences:
-                    if occ.component == component:
-                        # Check if this occurrence needs updating
-                        if hasattr(occ, 'isUpToDate'):
-                            if not occ.isUpToDate:
-                                needs_update = True
-                                break
-                        elif hasattr(occ, 'updateAvailable'):
-                            if occ.updateAvailable:
-                                needs_update = True
-                                break
-            except:
-                pass
-        
-        if needs_update:
-            components_needing_update.append(component_name)
-    
-    all_up_to_date = len(components_needing_update) == 0
-    return (all_up_to_date, components_needing_update)
+    try:
+        # Check if the document is up to date (includes external references)
+        document = design.parentDocument
+        if not document.isUpToDate:
+            # Document has external references that need updating
+            # Return that updates are needed - let user handle via updateAllReferences()
+            return (False, ["External references need updating"])
+        else:
+            # Document is up to date
+            return (True, [])
+    except Exception as e:
+        # If check fails, assume updates may be needed for safety
+        if ui:
+            ui.messageBox(f'Warning: Could not check external component update status: {str(e)}')
+        return (False, ["Unable to verify external component status"])
 
 def prompt_external_component_updates(components_needing_update, ui):
     """
@@ -631,24 +530,8 @@ def ensure_flat_pattern(component, ui=None):
                     ui.messageBox(error_msg)
                 return (False, None, error_msg)
         else:
-            # Flat pattern exists - try to update it
-            # Note: Fusion 360 API may not have a direct update() method
-            # Flat patterns typically update automatically when geometry changes
-            # However, we can try to regenerate/refresh if needed
-            try:
-                # Some APIs use regenerate() or similar methods
-                # If update method exists, use it; otherwise assume it's current
-                if hasattr(flatPattern, 'update'):
-                    flatPattern.update()
-                elif hasattr(flatPattern, 'regenerate'):
-                    flatPattern.regenerate()
-                # If no update method, assume flat pattern is current
-                # (Fusion 360 typically maintains flat patterns automatically)
-            except Exception as e:
-                # Update failed, but flat pattern exists - continue anyway
-                # Log warning but don't fail
-                pass
-            
+            # Flat pattern exists and is always current
+            # Fusion 360 automatically maintains flat patterns when geometry changes
             return (True, flatPattern, None)
             
     except Exception as e:
@@ -725,15 +608,8 @@ def export_flat_pattern_to_dxf(component, flat_pattern, output_path, design):
         dxfOptions.isExtentLinesExported = False       # Disable 'extend lines' (bounding box)
         dxfOptions.isSplineConvertedToPolyline = False # Keep splines (prevents missing lines issues)
         
-        # Attempt to set units to Millimeters (default is document units)
-        try:
-            # Try common property names for units
-            dxfOptions.unit = adsk.fusion.FlatPatternExportUnits.MillimeterFlatPatternExportUnit
-        except:
-            try:
-                dxfOptions.unit = adsk.fusion.FlatPatternExportUnits.Millimeter
-            except:
-                pass # Fallback to document units if property not found
+        # Set units to Millimeters (West Corte optimization)
+        dxfOptions.exportUnits = adsk.fusion.DXFFlatPatternExportUnits.Millimeters
         
         # Execute Export
         exportMgr.execute(dxfOptions)
@@ -744,21 +620,19 @@ def export_flat_pattern_to_dxf(component, flat_pattern, output_path, design):
         error_msg = f'Failed to export DXF for component "{component.name}": {str(e)}'
         return (False, error_msg)
 
-def handle_external_component(comp_info, original_document, original_design, filename_manager, 
+def handle_external_component(comp_info, original_document, original_design, filename_manager,
                              export_result, current_index, total_count, ui):
     """
     Task 7: External Component Handling
-    
+
     Handles export of external/referenced components:
-    - Opens external component in new tab/document (bring to front)
-    - Activates the component in the opened document
+    - Activates the component in the current design (external components are already referenced)
     - Exports flat pattern using Task 6 logic
     - Uses Task 9 for filename generation
     - Uses Task 10 for progress updates
     - Uses Task 11 for error tracking
-    - Closes the opened document (without saving - should be unchanged)
     - Restores original document context
-    
+
     Args:
         comp_info: Component info dict with 'component', 'occurrence', 'is_external', 'source_document'
         original_document: The original document to restore after processing
@@ -768,7 +642,7 @@ def handle_external_component(comp_info, original_document, original_design, fil
         current_index: Current component index (1-based) for progress display
         total_count: Total number of components to process
         ui: UI object for messages
-        
+
     Returns:
         bool: True if export was successful, False otherwise
     """
@@ -778,136 +652,57 @@ def handle_external_component(comp_info, original_document, original_design, fil
     # Show progress
     show_progress(ui, current_index, total_count, component_name, display=False)
     
-    # Track original active document
+    # External components work with current design - no separate document handling needed
     app = adsk.core.Application.get()
-    opened_document = None
     
     try:
-        # Get the source document for the external component
-        source_doc = comp_info.get('source_document')
-        
-        if not source_doc:
-            # Try to get document from component
-            try:
-                source_doc = component.parentDocument
-            except:
-                pass
-        
-        if not source_doc:
-            error_msg = f'Could not determine source document for external component "{component_name}"'
-            export_result.record_failure(component_name, error_msg)
-            return False
-        
-        # Open the external component's document
-        # In Fusion 360, external components are typically already accessible
-        # but we may need to activate their document
+        # External components are already referenced in the current design
+        # No need to open separate documents - work directly with current design
+        opened_design = original_design
+
+        # Activate the component in the current design
         try:
-            # Check if document is already open
-            documents = app.documents
-            opened_document = None
-            
-            # Try to find the document in open documents
-            for i in range(documents.count):
-                doc = documents.item(i)
-                if doc == source_doc:
-                    opened_document = doc
-                    break
-            
-            # If document not found in open documents, try to open it
-            # Note: External components may already be accessible without explicit opening
-            # The document might be referenced but not actively open
-            if not opened_document:
-                # Try to open the document if it has a file path
-                try:
-                    if hasattr(source_doc, 'dataFile') and source_doc.dataFile:
-                        # Document has a file - try to open it
-                        # Note: This may not be necessary if component is already accessible
-                        # Fusion 360 may handle external references automatically
-                        pass
-                except:
-                    pass
-            
-            # If we couldn't find/open the document, try to work with the component directly
-            # External components may be accessible through their occurrence
-            if not opened_document:
-                opened_document = source_doc
-            
-            # Activate the document (bring to front)
-            if opened_document:
-                try:
-                    app.activeDocument = opened_document
-                except:
-                    # If activation fails, continue anyway - component may still be accessible
-                    pass
-            
-            # Get the design from the opened document
-            opened_design = None
-            if opened_document:
-                try:
-                    opened_design = opened_document.product
-                    if not isinstance(opened_design, adsk.fusion.Design):
-                        opened_design = None
-                except:
-                    pass
-            
-            # If we couldn't get design from opened document, try to use component's design
-            if not opened_design:
-                try:
-                    # Component should have access to its design
-                    comp_doc = component.parentDocument
-                    if comp_doc:
-                        opened_design = comp_doc.product
-                        if not isinstance(opened_design, adsk.fusion.Design):
-                            opened_design = None
-                except:
-                    pass
-            
-            if not opened_design:
-                error_msg = f'Could not access design for external component "{component_name}"'
+            opened_design.activeComponent = component
+        except Exception:
+            # If primary activation fails, try alternative method
+            try:
+                component.activate()
+            except Exception:
+                # If both activation methods fail, cannot proceed with export
+                error_msg = f'Failed to activate component "{component_name}" - cannot export'
                 export_result.record_failure(component_name, error_msg)
                 return False
-            
-            # Activate the component in the opened design
-            try:
-                opened_design.activeComponent = component
-            except:
-                # If activation fails, try alternative method
-                try:
-                    component.activate()
-                except:
-                    # If both fail, continue anyway - may still be able to export
-                    pass
-            
-            # Task 6: Ensure flat pattern exists and is up-to-date
-            success, flat_pattern, error_msg = ensure_flat_pattern(component, ui=None)
-            
-            if not success:
-                export_result.record_failure(component_name, error_msg or 'Failed to create/update flat pattern')
-                return False
-            
-            if not flat_pattern:
-                export_result.record_failure(component_name, 'Flat pattern not found after creation')
-                return False
-            
-            # Task 9: Generate export path using FilenameManager
-            export_path = filename_manager.get_export_path(component_name)
-            
-            # Export the flat pattern
-            export_success, export_error = export_flat_pattern_to_dxf(
-                component, flat_pattern, export_path, opened_design
-            )
-            
-            if export_success:
-                export_result.record_success(component_name, export_path)
-                return True
-            else:
-                export_result.record_failure(component_name, export_error or 'Export failed')
-                return False
-                
-        except Exception as e:
-            error_msg = f'Error processing external component "{component_name}": {str(e)}'
-            export_result.record_failure(component_name, error_msg)
+
+        # Task 6: Ensure flat pattern exists and is up-to-date (only after successful activation)
+        success, flat_pattern, error_msg = ensure_flat_pattern(component, ui=None)
+
+        if not success:
+            export_result.record_failure(component_name, error_msg or 'Failed to create/update flat pattern')
             return False
+
+        if not flat_pattern:
+            export_result.record_failure(component_name, 'Flat pattern not found after creation')
+            return False
+
+        # Task 9: Generate export path using FilenameManager
+        export_path = filename_manager.get_export_path(component_name)
+
+        # Export the flat pattern
+        export_success, export_error = export_flat_pattern_to_dxf(
+            component, flat_pattern, export_path, opened_design
+        )
+
+        if export_success:
+            export_result.record_success(component_name, export_path)
+            return True
+        else:
+            export_result.record_failure(component_name, export_error or 'Export failed')
+            return False
+
+    except Exception as e:
+        error_msg = f'Error processing external component "{component_name}": {str(e)}'
+        export_result.record_failure(component_name, error_msg)
+        return False
             
     finally:
         # Restore original document context
