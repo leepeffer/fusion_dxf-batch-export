@@ -609,7 +609,7 @@ def export_flat_pattern_to_dxf(component, flat_pattern, output_path, design):
         dxfOptions.isSplineConvertedToPolyline = False # Keep splines (prevents missing lines issues)
         
         # Set units to Millimeters (West Corte optimization)
-        dxfOptions.exportUnits = adsk.fusion.DXFFlatPatternExportUnits.Millimeters
+        dxfOptions.units = adsk.fusion.DistanceUnits.MillimeterDistanceUnits
         
         # Execute Export
         exportMgr.execute(dxfOptions)
@@ -661,17 +661,19 @@ def handle_external_component(comp_info, original_document, original_design, fil
         opened_design = original_design
 
         # Activate the component in the current design
+        occurrence = comp_info['occurrence']
         try:
-            opened_design.activeComponent = component
-        except Exception:
-            # If primary activation fails, try alternative method
-            try:
-                component.activate()
-            except Exception:
-                # If both activation methods fail, cannot proceed with export
-                error_msg = f'Failed to activate component "{component_name}" - cannot export'
-                export_result.record_failure(component_name, error_msg)
-                return False
+            if occurrence:
+                # For components in assemblies, activate through the occurrence
+                occurrence.activate()
+            else:
+                # For root component, set as active component
+                opened_design.activeComponent = component
+        except Exception as e:
+            # If activation fails, cannot proceed with export
+            error_msg = f'Failed to activate component "{component_name}" - cannot export: {str(e)}'
+            export_result.record_failure(component_name, error_msg)
+            return False
 
         # Task 6: Ensure flat pattern exists and is up-to-date (only after successful activation)
         success, flat_pattern, error_msg = ensure_flat_pattern(component, ui=None)
@@ -755,16 +757,19 @@ def handle_internal_component(comp_info, original_active_component, design, file
     
     try:
         # Activate the component
+        occurrence = comp_info['occurrence']
         try:
-            design.activeComponent = component
-        except:
-            # If direct activation fails, try alternative method
-            try:
-                component.activate()
-            except Exception as e:
-                error_msg = f'Failed to activate component "{component_name}": {str(e)}'
-                export_result.record_failure(component_name, error_msg)
-                return False
+            if occurrence:
+                # For components in assemblies, activate through the occurrence
+                occurrence.activate()
+            else:
+                # For root component, set as active component
+                design.activeComponent = component
+        except Exception as e:
+            # If activation fails, cannot proceed with export
+            error_msg = f'Failed to activate component "{component_name}": {str(e)}'
+            export_result.record_failure(component_name, error_msg)
+            return False
         
         # Task 6: Ensure flat pattern exists and is up-to-date
         success, flat_pattern, error_msg = ensure_flat_pattern(component, ui=None)
