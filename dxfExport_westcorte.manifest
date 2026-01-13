@@ -1,11 +1,11 @@
 {
 	"autodeskProduct":	"Fusion",
 	"type":	"script",
-	"author":	"",
+	"author":	"West Corte",
 	"description":	{
-		"":	"exports a dxf file how west corte likes their dxfs"
+		"":	"Batch export sheet metal flat patterns to DXF files with West Corte optimized settings"
 	},
-	"version":	"",
+	"version":	"1.0.0",
 	"supportedOS":	"windows|mac",
 	"editEnabled":	true,
 	"iconFilename":	"ScriptIcon.svg"

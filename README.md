@@ -31,6 +31,15 @@ This script automates the batch export of sheet metal flat patterns from Fusion 
 
 ## Installation
 
+### Option 1: Using GitHub/GitLab Installer (Recommended)
+
+1. Install the "Install scripts or addins from GitHub or GitLab" addon from the [Autodesk App Store](https://apps.autodesk.com/FUSION/en/Detail/Index?id=789800822168335025&appLang=en&os=Mac&autostart=true)
+2. Launch the addon in Fusion 360
+3. Enter this repository URL: `https://github.com/leepeffer/fusion_dxf-batch-export`
+4. Click OK - the script will be automatically installed
+
+### Option 2: Manual Installation
+
 1. Clone or download this repository
 2. Open Fusion 360
 3. Go to **Tools** → **Add-Ins** → **Scripts and Add-Ins**
