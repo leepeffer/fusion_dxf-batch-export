@@ -1,0 +1,25 @@
+# Fusion 360 DXF Batch Export - AI Agent Guidelines
+
+## API Reference
+When working with Fusion 360 API code, always reference the official API documentation:
+- **Fusion API Reference Repository**: https://github.com/AutodeskFusion360/FusionAPIReference
+- This repository contains HTML documentation, C++ headers, and Python object definitions
+- Use the Python reference in `Fusion_API_Python_Reference/defs/` for method signatures and properties
+- Check `Fusion_API_Documentation/files/` for detailed API documentation
+
+## Project Context
+This is a Fusion 360 add-in script for batch exporting sheet metal flat patterns to DXF format with settings optimized for West Corte.
+
+## Code Style
+- Use the Fusion 360 Python API (`adsk.core`, `adsk.fusion`, `adsk.cam`)
+- Follow existing error handling patterns with try/except blocks
+- Include user-friendly error messages via `ui.messageBox()`
+- Sanitize file names to replace illegal characters (e.g., `:` → `_`)
+
+## Key API Classes Used
+- `adsk.core.Application` - Main application access
+- `adsk.fusion.Design` - Design document
+- `adsk.fusion.Component` - Component objects
+- `adsk.fusion.FlatPattern` - Flat pattern objects
+- `adsk.fusion.ExportManager` - Export functionality
+- `adsk.fusion.DXFFlatPatternExportOptions` - DXF export options

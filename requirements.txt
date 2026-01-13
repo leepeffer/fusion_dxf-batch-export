@@ -1,0 +1,10 @@
+# Fusion 360 DXF Batch Export - Requirements
+#
+# Note: The adsk (Fusion 360 API) modules are provided by Fusion 360 itself
+# and are not available via pip. They are automatically available when running
+# scripts within Fusion 360.
+#
+# This file is for any additional Python dependencies that might be needed
+# for local development, testing, or future enhancements.
+#
+# Currently no external dependencies required.

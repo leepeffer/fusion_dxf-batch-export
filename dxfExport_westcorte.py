@@ -1,6 +1,10 @@
 #Author-
 #Description-
 
+# Fusion 360 API Reference: https://github.com/AutodeskFusion360/FusionAPIReference
+# Python API docs: Fusion_API_Python_Reference/defs/
+# HTML docs: Fusion_API_Documentation/files/
+
 import adsk.core, adsk.fusion, adsk.cam, traceback
 import os
 
