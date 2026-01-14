@@ -22,12 +22,12 @@ class FilenameManager:
     def __init__(self, output_folder):
         """
         Initialize the filename manager.
-        
+
         Args:
             output_folder: The base output folder path for exports
         """
         self.output_folder = output_folder
-        self.used_filenames = {}  # Maps base filename -> counter
+        self.used_filenames = {}  # Maps (base_filename, extension) -> counter
         
     def sanitize_filename(self, component_name):
         """
@@ -57,53 +57,105 @@ class FilenameManager:
             
         return sanitized
     
-    def get_export_path(self, component_name):
+    def get_export_path(self, component_name, file_extension='.dxf'):
         """
         Generate a unique export path for a component.
-        
+
         Uses component name only (not parent path).
         Handles duplicates by appending sequential numbers.
         Checks both in-session duplicates and existing files on disk.
-        
+
         Args:
             component_name: The name of the component to export
-            
+            file_extension: The file extension (including dot, e.g., '.dxf', '.pdf')
+
         Returns:
-            str: Full path to the export file (including .dxf extension)
+            str: Full path to the export file (including extension)
         """
         # Sanitize the base filename
         base_name = self.sanitize_filename(component_name)
-        
-        # Determine the starting counter for this base name
-        if base_name not in self.used_filenames:
-            # First time seeing this base name - start at 0
-            self.used_filenames[base_name] = -1  # Will be incremented to 0
-        
-        # Increment counter for this base name
-        self.used_filenames[base_name] += 1
-        counter = self.used_filenames[base_name]
-        
+
+        # Use (base_name, extension) as the key for duplicate tracking
+        filename_key = (base_name, file_extension)
+
+        # Determine the starting counter for this base name and extension
+        if filename_key not in self.used_filenames:
+            # First time seeing this base name/extension combination - start at 0
+            self.used_filenames[filename_key] = -1  # Will be incremented to 0
+
+        # Increment counter for this base name and extension
+        self.used_filenames[filename_key] += 1
+        counter = self.used_filenames[filename_key]
+
         # Generate filename based on counter
         if counter == 0:
             # First occurrence - use base name without number
-            filename = f"{base_name}.dxf"
+            filename = f"{base_name}{file_extension}"
         else:
             # Duplicate detected - append number
-            filename = f"{base_name}_{counter}.dxf"
-        
+            filename = f"{base_name}_{counter}{file_extension}"
+
         # Construct full path
         full_path = os.path.join(self.output_folder, filename)
-        
+
         # Check if file already exists on disk and find next available number
         while os.path.exists(full_path):
-            self.used_filenames[base_name] += 1
-            counter = self.used_filenames[base_name]
+            self.used_filenames[filename_key] += 1
+            counter = self.used_filenames[filename_key]
             if counter == 0:
-                filename = f"{base_name}.dxf"
+                filename = f"{base_name}{file_extension}"
             else:
-                filename = f"{base_name}_{counter}.dxf"
+                filename = f"{base_name}_{counter}{file_extension}"
             full_path = os.path.join(self.output_folder, filename)
-        
+
+        return full_path
+
+    def get_drawing_export_path(self, drawing_name):
+        """
+        Generate export path for a drawing using its actual name.
+
+        Args:
+            drawing_name: The name of the drawing (from Fusion 360)
+
+        Returns:
+            str: Full path to the export file (including .pdf extension)
+        """
+        # Sanitize drawing name
+        base_name = self.sanitize_filename(drawing_name)
+
+        # Use (base_name, '.pdf') as the key for duplicate tracking
+        filename_key = (base_name, '.pdf')
+
+        # Determine the starting counter for this drawing name
+        if filename_key not in self.used_filenames:
+            # First time seeing this drawing name - start at 0
+            self.used_filenames[filename_key] = -1  # Will be incremented to 0
+
+        # Increment counter for this drawing name
+        self.used_filenames[filename_key] += 1
+        counter = self.used_filenames[filename_key]
+
+        # Generate filename based on counter
+        if counter == 0:
+            # First occurrence - use base name without number
+            filename = f"{base_name}.pdf"
+        else:
+            # Duplicate detected - append number
+            filename = f"{base_name}_{counter}.pdf"
+
+        # Construct full path
+        full_path = os.path.join(self.output_folder, filename)
+
+        # Check if file already exists on disk and find next available number
+        while os.path.exists(full_path):
+            self.used_filenames[filename_key] += 1
+            counter = self.used_filenames[filename_key]
+            if counter == 0:
+                filename = f"{base_name}.pdf"
+            else:
+                filename = f"{base_name}_{counter}.pdf"
+            full_path = os.path.join(self.output_folder, filename)
+
         return full_path
 
 def show_progress(ui, current_index, total_count, component_name, display=False):
@@ -155,8 +207,10 @@ class ExportResult:
     
     def __init__(self):
         """Initialize the export result tracker."""
-        self.successful_exports = []  # List of dicts: {'component_name': str, 'file_path': str}
-        self.failed_exports = []      # List of dicts: {'component_name': str, 'error': str}
+        self.successful_exports = []     # List of dicts: {'component_name': str, 'file_path': str}
+        self.failed_exports = []         # List of dicts: {'component_name': str, 'error': str}
+        self.drawing_exports = []        # List of dicts: {'component_name': str, 'drawing_name': str, 'file_path': str}
+        self.failed_drawing_exports = [] # List of dicts: {'component_name': str, 'drawing_name': str, 'error': str}
     
     def record_success(self, component_name, file_path):
         """
@@ -174,13 +228,43 @@ class ExportResult:
     def record_failure(self, component_name, error_message):
         """
         Record a failed export.
-        
+
         Args:
             component_name: Name of the component that failed to export
             error_message: Error message describing the failure
         """
         self.failed_exports.append({
             'component_name': component_name,
+            'error': error_message
+        })
+
+    def record_drawing_success(self, component_name, drawing_name, file_path):
+        """
+        Record a successful drawing export.
+
+        Args:
+            component_name: Name of the component the drawing belongs to
+            drawing_name: Name of the drawing that was exported
+            file_path: Full path to the exported PDF file
+        """
+        self.drawing_exports.append({
+            'component_name': component_name,
+            'drawing_name': drawing_name,
+            'file_path': file_path
+        })
+
+    def record_drawing_failure(self, component_name, drawing_name, error_message):
+        """
+        Record a failed drawing export.
+
+        Args:
+            component_name: Name of the component the drawing belongs to
+            drawing_name: Name of the drawing that failed to export
+            error_message: Error message describing the failure
+        """
+        self.failed_drawing_exports.append({
+            'component_name': component_name,
+            'drawing_name': drawing_name,
             'error': error_message
         })
     
@@ -214,7 +298,7 @@ class ExportResult:
     def format_summary(self):
         """
         Format a summary message for display to the user.
-        
+
         Returns:
             str: Formatted summary message with success/failure counts,
                  list of failures (if any), and list of exported files
@@ -222,32 +306,54 @@ class ExportResult:
         total = self.get_total_count()
         success_count = self.get_success_count()
         failure_count = self.get_failure_count()
-        
+        drawing_count = len(self.drawing_exports)
+        drawing_failure_count = len(self.failed_drawing_exports)
+
         # Build summary message
         lines = []
-        
+
         # Main summary line
         if total == 0:
             lines.append("No components were processed.")
         else:
             lines.append(f"Export Summary: {success_count} of {total} components exported successfully.")
-        
+
+        # Add drawing export summary if any drawings were processed
+        if drawing_count > 0 or drawing_failure_count > 0:
+            lines.append(f"Drawing Exports: {drawing_count} successful, {drawing_failure_count} failed.")
+
         # Add failure details if any
         if failure_count > 0:
             lines.append("")
-            lines.append(f"Failed Exports ({failure_count}):")
+            lines.append(f"Failed DXF Exports ({failure_count}):")
             for failure in self.failed_exports:
                 lines.append(f"  • {failure['component_name']}: {failure['error']}")
-        
+
+        # Add drawing failure details if any
+        if drawing_failure_count > 0:
+            lines.append("")
+            lines.append(f"Failed Drawing Exports ({drawing_failure_count}):")
+            for failure in self.failed_drawing_exports:
+                lines.append(f"  • {failure['component_name']} ({failure['drawing_name']}): {failure['error']}")
+
         # Add successful export file paths
         if success_count > 0:
             lines.append("")
-            lines.append(f"Exported Files ({success_count}):")
+            lines.append(f"Exported DXF Files ({success_count}):")
             for export in self.successful_exports:
                 # Show just the filename, not full path (for readability)
                 filename = os.path.basename(export['file_path'])
                 lines.append(f"  • {export['component_name']} → {filename}")
-        
+
+        # Add successful drawing export file paths
+        if drawing_count > 0:
+            lines.append("")
+            lines.append(f"Exported Drawing Files ({drawing_count}):")
+            for export in self.drawing_exports:
+                # Show just the filename, not full path (for readability)
+                filename = os.path.basename(export['file_path'])
+                lines.append(f"  • {export['component_name']} → {filename} ({export['drawing_name']})")
+
         return "\n".join(lines)
     
     def show_summary(self, ui):
@@ -260,9 +366,12 @@ class ExportResult:
         summary = self.format_summary()
         
         # Determine title based on results
-        if self.get_failure_count() == 0 and self.get_success_count() > 0:
+        has_failures = self.get_failure_count() > 0 or len(self.failed_drawing_exports) > 0
+        has_successes = self.get_success_count() > 0 or len(self.drawing_exports) > 0
+
+        if not has_failures and has_successes:
             title = "Export Complete"
-        elif self.get_failure_count() > 0:
+        elif has_failures:
             title = "Export Complete (with errors)"
         else:
             title = "Export Summary"
@@ -621,7 +730,7 @@ def export_flat_pattern_to_dxf(component, flat_pattern, output_path, design):
         return (False, error_msg)
 
 def handle_external_component(comp_info, original_document, original_design, filename_manager,
-                             export_result, current_index, total_count, ui):
+                             export_result, current_index, total_count, ui, export_drawings=False):
     """
     Task 7: External Component Handling
 
@@ -642,6 +751,7 @@ def handle_external_component(comp_info, original_document, original_design, fil
         current_index: Current component index (1-based) for progress display
         total_count: Total number of components to process
         ui: UI object for messages
+        export_drawings: Boolean indicating whether to export associated drawings
 
     Returns:
         bool: True if export was successful, False otherwise
@@ -696,6 +806,39 @@ def handle_external_component(comp_info, original_document, original_design, fil
 
         if export_success:
             export_result.record_success(component_name, export_path)
+
+            # Export associated drawings if requested
+            if export_drawings:
+                try:
+                    # Find drawings associated with this component
+                    associated_drawings = find_associated_drawings(component, app, ui=None)
+
+                    if associated_drawings:
+                        # Get the latest drawing
+                        latest_drawing = get_latest_drawing(associated_drawings)
+
+                        if latest_drawing:
+                            # Generate export path for the drawing
+                            drawing_export_path = filename_manager.get_drawing_export_path(latest_drawing['name'])
+
+                            # Export the drawing to PDF
+                            drawing_success, drawing_error = export_drawing_to_pdf(
+                                latest_drawing['drawing'],
+                                latest_drawing['document'],
+                                drawing_export_path,
+                                ui=None
+                            )
+
+                            if drawing_success:
+                                export_result.record_drawing_success(component_name, latest_drawing['name'], drawing_export_path)
+                            else:
+                                export_result.record_drawing_failure(component_name, latest_drawing['name'], drawing_error or 'Drawing export failed')
+                        # If no latest drawing found, silently skip (not an error)
+                    # If no associated drawings found, silently skip (not an error)
+                except Exception as e:
+                    # Log drawing export error but don't fail the component export
+                    export_result.record_drawing_failure(component_name, 'Unknown', f'Drawing export error: {str(e)}')
+
             return True
         else:
             export_result.record_failure(component_name, export_error or 'Export failed')
@@ -724,7 +867,7 @@ def handle_external_component(comp_info, original_document, original_design, fil
             pass
 
 def handle_internal_component(comp_info, original_active_component, design, filename_manager,
-                             export_result, current_index, total_count, ui):
+                             export_result, current_index, total_count, ui, export_drawings=False):
     """
     Task 8: Internal Component Handling
     
@@ -745,6 +888,7 @@ def handle_internal_component(comp_info, original_active_component, design, file
         current_index: Current component index (1-based) for progress display
         total_count: Total number of components to process
         ui: UI object for messages
+        export_drawings: Boolean indicating whether to export associated drawings
         
     Returns:
         bool: True if export was successful, False otherwise
@@ -789,9 +933,43 @@ def handle_internal_component(comp_info, original_active_component, design, file
         export_success, export_error = export_flat_pattern_to_dxf(
             component, flat_pattern, export_path, design
         )
-        
+
         if export_success:
             export_result.record_success(component_name, export_path)
+
+            # Export associated drawings if requested
+            if export_drawings:
+                try:
+                    app = adsk.core.Application.get()
+                    # Find drawings associated with this component
+                    associated_drawings = find_associated_drawings(component, app, ui=None)
+
+                    if associated_drawings:
+                        # Get the latest drawing
+                        latest_drawing = get_latest_drawing(associated_drawings)
+
+                        if latest_drawing:
+                            # Generate export path for the drawing
+                            drawing_export_path = filename_manager.get_drawing_export_path(latest_drawing['name'])
+
+                            # Export the drawing to PDF
+                            drawing_success, drawing_error = export_drawing_to_pdf(
+                                latest_drawing['drawing'],
+                                latest_drawing['document'],
+                                drawing_export_path,
+                                ui=None
+                            )
+
+                            if drawing_success:
+                                export_result.record_drawing_success(component_name, latest_drawing['name'], drawing_export_path)
+                            else:
+                                export_result.record_drawing_failure(component_name, latest_drawing['name'], drawing_error or 'Drawing export failed')
+                        # If no latest drawing found, silently skip (not an error)
+                    # If no associated drawings found, silently skip (not an error)
+                except Exception as e:
+                    # Log drawing export error but don't fail the component export
+                    export_result.record_drawing_failure(component_name, 'Unknown', f'Drawing export error: {str(e)}')
+
             return True
         else:
             export_result.record_failure(component_name, export_error or 'Export failed')
@@ -800,6 +978,179 @@ def handle_internal_component(comp_info, original_active_component, design, file
     except Exception as e:
         error_msg = f'Error processing internal component "{component_name}": {str(e)}'
         export_result.record_failure(component_name, error_msg)
+        return False
+
+def find_associated_drawings(component, app, ui=None):
+    """
+    Find all drawings that reference the given component.
+
+    Args:
+        component: The Component to find drawings for
+        app: The Fusion 360 Application object
+        ui: Optional UI object for error messages
+
+    Returns:
+        list: List of Drawing objects that reference this component
+              Each entry is a dict with:
+              - 'drawing': Drawing - The drawing object
+              - 'document': Document - The document containing the drawing
+              - 'name': str - The drawing name
+              - 'modification_date': datetime or None - Last modification date if available
+    """
+    associated_drawings = []
+
+    try:
+        # Iterate through all open documents
+        for doc in app.documents:
+            try:
+                # Check if document is a drawing
+                if doc.isFusionDrawing:
+                    # Cast to Drawing
+                    drawing = adsk.drawing.Drawing.cast(doc.products.itemByProductType('DrawingProductType'))
+                    if not drawing:
+                        continue
+
+                    # Check if this drawing references our component
+                    drawing_references_component = False
+
+                    # Iterate through drawing views
+                    for view in drawing.drawingViews:
+                        try:
+                            # Check if view references the component's design
+                            if view.referencedDesign:
+                                # Check if this design contains our component
+                                if _drawing_references_component(view.referencedDesign, component):
+                                    drawing_references_component = True
+                                    break
+                        except:
+                            # Skip views that can't be checked
+                            continue
+
+                    # If this drawing references our component, add it to the list
+                    if drawing_references_component:
+                        # Get modification date if available
+                        modification_date = None
+                        try:
+                            if hasattr(doc, 'dateModified') and doc.dateModified:
+                                modification_date = doc.dateModified
+                        except:
+                            pass
+
+                        associated_drawings.append({
+                            'drawing': drawing,
+                            'document': doc,
+                            'name': doc.name,
+                            'modification_date': modification_date
+                        })
+
+            except Exception as e:
+                # Skip documents that cause errors, but continue checking others
+                if ui:
+                    # Could log this but for now just continue
+                    pass
+                continue
+
+    except Exception as e:
+        if ui:
+            ui.messageBox(f'Error searching for associated drawings: {str(e)}')
+
+    return associated_drawings
+
+def get_latest_drawing(drawings_list):
+    """
+    Get the most recently modified drawing from a list.
+
+    Args:
+        drawings_list: List of drawing dicts from find_associated_drawings()
+
+    Returns:
+        dict or None: The latest drawing dict, or None if list is empty
+    """
+    if not drawings_list:
+        return None
+
+    # Try to sort by modification date (if available)
+    drawings_with_dates = []
+    drawings_without_dates = []
+
+    for drawing_info in drawings_list:
+        if drawing_info['modification_date']:
+            drawings_with_dates.append(drawing_info)
+        else:
+            drawings_without_dates.append(drawing_info)
+
+    # Sort drawings with dates by modification date (most recent first)
+    if drawings_with_dates:
+        drawings_with_dates.sort(key=lambda x: x['modification_date'], reverse=True)
+        return drawings_with_dates[0]
+
+    # If no modification dates available, return the first one
+    if drawings_without_dates:
+        return drawings_without_dates[0]
+
+    return None
+
+def export_drawing_to_pdf(drawing, document, output_path, ui=None):
+    """
+    Export a drawing to PDF format.
+
+    Args:
+        drawing: The Drawing object to export
+        document: The Document containing the drawing
+        output_path: Full path where the PDF file should be saved
+        ui: Optional UI object for error messages
+
+    Returns:
+        tuple: (success: bool, error_message: str or None)
+    """
+    try:
+        # Access the drawing's export manager
+        exportMgr = drawing.exportManager
+
+        # Create PDF export options
+        pdfOptions = exportMgr.createPDFExportOptions(output_path)
+
+        # Set export options
+        pdfOptions.sheetsToExport = adsk.drawing.PDFSheetsExport.AllPDFSheetsExport
+        pdfOptions.useLineWeights = True
+
+        # Execute the export
+        exportMgr.execute(pdfOptions)
+
+        return (True, None)
+
+    except Exception as e:
+        error_msg = f'Failed to export drawing "{document.name}" to PDF: {str(e)}'
+        return (False, error_msg)
+
+def _drawing_references_component(referenced_design, target_component):
+    """
+    Helper function to check if a referenced design contains the target component.
+
+    Args:
+        referenced_design: The design referenced by a drawing view
+        target_component: The component we're looking for
+
+    Returns:
+        bool: True if the design contains the target component
+    """
+    try:
+        # Check if the referenced design's root component is our target
+        if referenced_design.rootComponent == target_component:
+            return True
+
+        # Check if any component in the referenced design matches our target
+        for comp in referenced_design.allComponents:
+            if comp == target_component:
+                return True
+
+        # Check if the target component's parent document is this design
+        if hasattr(target_component, 'parentDocument') and target_component.parentDocument == referenced_design.parentDocument:
+            return True
+
+        return False
+
+    except:
         return False
 
 def run(context):
@@ -814,7 +1165,18 @@ def run(context):
             ui.messageBox('No active Fusion 360 design found.')
             return
 
-        # 1. Folder Selection Dialog (Early - before any processing)
+        # 1. Drawing Export Option Dialog
+        export_drawings_result = ui.messageBox(
+            'Export associated drawings (if available)?\n\n' +
+            'This will export PDF files for any open drawings that reference the components being exported.',
+            'Export Drawings Option',
+            adsk.core.MessageBoxButtonTypes.YesNoButtonType,
+            adsk.core.MessageBoxIconTypes.QuestionIconType
+        )
+
+        export_drawings = (export_drawings_result == adsk.core.DialogResults.DialogYes)
+
+        # 2. Folder Selection Dialog (Early - before any processing)
         folderDlg = ui.createFolderDialog()
         folderDlg.title = 'Select Output Folder for DXF'
         
@@ -884,7 +1246,8 @@ def run(context):
                         export_result=export_result,
                         current_index=index,
                         total_count=total_count,
-                        ui=ui
+                        ui=ui,
+                        export_drawings=export_drawings
                     )
                 else:
                     # Task 8: Handle internal component
@@ -896,7 +1259,8 @@ def run(context):
                         export_result=export_result,
                         current_index=index,
                         total_count=total_count,
-                        ui=ui
+                        ui=ui,
+                        export_drawings=export_drawings
                     )
             except Exception as e:
                 # Catch any unexpected errors and continue processing
