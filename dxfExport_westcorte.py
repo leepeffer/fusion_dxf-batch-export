@@ -1447,6 +1447,17 @@ def run(context):
 
         export_drawings = (export_drawings_result == adsk.core.DialogResults.DialogYes)
 
+        # 2. Folder Selection Dialog (Early - before any processing)
+        folderDlg = ui.createFolderDialog()
+        folderDlg.title = 'Select Output Folder for DXF'
+
+        # Show dialog
+        dlgResult = folderDlg.showDialog()
+        if dlgResult != adsk.core.DialogResults.DialogOK:
+            return # User cancelled
+
+        outputFolder = folderDlg.folder
+
         drawings_folder = None
         if export_drawings:
             # Ask user for drawings directory
@@ -1462,20 +1473,9 @@ def run(context):
             else:
                 drawings_folder = drawings_folder_dlg.folder
 
-        # 2. Folder Selection Dialog (Early - before any processing)
-        folderDlg = ui.createFolderDialog()
-        folderDlg.title = 'Select Output Folder for DXF'
-        
-        # Show dialog
-        dlgResult = folderDlg.showDialog()
-        if dlgResult != adsk.core.DialogResults.DialogOK:
-            return # User cancelled
-            
-        outputFolder = folderDlg.folder
-        
         # Task 9: Initialize File Naming & Duplicate Handling
         filename_manager = FilenameManager(outputFolder)
-        
+
         # Task 3: Component Type Detection
         component_type_info = detect_component_type(design)
         is_assembly = component_type_info['is_assembly']
