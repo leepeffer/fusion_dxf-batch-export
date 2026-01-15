@@ -5,7 +5,7 @@
 # Python API docs: Fusion_API_Python_Reference/defs/
 # HTML docs: Fusion_API_Documentation/files/
 
-import adsk.core, adsk.fusion, adsk.cam, traceback
+import adsk.core, adsk.fusion, adsk.cam, adsk.drawing, traceback
 import os
 import re
 
@@ -824,7 +824,6 @@ def handle_external_component(comp_info, original_document, original_design, fil
                             # Export the drawing to PDF
                             drawing_success, drawing_error = export_drawing_to_pdf(
                                 latest_drawing['drawing'],
-                                latest_drawing['document'],
                                 drawing_export_path,
                                 ui=None
                             )
@@ -955,7 +954,6 @@ def handle_internal_component(comp_info, original_active_component, design, file
                             # Export the drawing to PDF
                             drawing_success, drawing_error = export_drawing_to_pdf(
                                 latest_drawing['drawing'],
-                                latest_drawing['document'],
                                 drawing_export_path,
                                 ui=None
                             )
@@ -993,7 +991,7 @@ def find_associated_drawings(component, app, ui=None):
         list: List of Drawing objects that reference this component
               Each entry is a dict with:
               - 'drawing': Drawing - The drawing object
-              - 'document': Document - The document containing the drawing
+              - 'document': DrawingDocument - The document containing the drawing
               - 'name': str - The drawing name
               - 'modification_date': datetime or None - Last modification date if available
     """
@@ -1003,45 +1001,50 @@ def find_associated_drawings(component, app, ui=None):
         # Iterate through all open documents
         for doc in app.documents:
             try:
-                # Check if document is a drawing
-                if doc.isFusionDrawing:
-                    # Cast to Drawing
-                    drawing = adsk.drawing.Drawing.cast(doc.products.itemByProductType('DrawingProductType'))
-                    if not drawing:
+                # Check if document has a drawing product
+                drawing_product = doc.products.itemByProductType("DrawingProductType")
+                if not drawing_product:
+                    continue
+
+                # Cast to Drawing
+                drawing = adsk.drawing.Drawing.cast(drawing_product)
+                if not drawing:
+                    continue
+
+                # Get the DrawingDocument and check its references
+                drawing_doc = drawing.parentDocument
+                if not drawing_doc:
+                    continue
+
+                # Check if this drawing references our component's document
+                component_doc = component.parentDocument
+                drawing_references_component = False
+
+                # Use allDocumentReferences to check if the drawing references our component's document
+                for doc_ref in drawing_doc.allDocumentReferences:
+                    try:
+                        if doc_ref.dataFile and component_doc and doc_ref.dataFile == component_doc.dataFile:
+                            drawing_references_component = True
+                            break
+                    except:
                         continue
 
-                    # Check if this drawing references our component
-                    drawing_references_component = False
+                # If this drawing references our component's document, add it to the list
+                if drawing_references_component:
+                    # Get modification date if available
+                    modification_date = None
+                    try:
+                        if hasattr(doc, 'dateModified') and doc.dateModified:
+                            modification_date = doc.dateModified
+                    except:
+                        pass
 
-                    # Iterate through drawing views
-                    for view in drawing.drawingViews:
-                        try:
-                            # Check if view references the component's design
-                            if view.referencedDesign:
-                                # Check if this design contains our component
-                                if _drawing_references_component(view.referencedDesign, component):
-                                    drawing_references_component = True
-                                    break
-                        except:
-                            # Skip views that can't be checked
-                            continue
-
-                    # If this drawing references our component, add it to the list
-                    if drawing_references_component:
-                        # Get modification date if available
-                        modification_date = None
-                        try:
-                            if hasattr(doc, 'dateModified') and doc.dateModified:
-                                modification_date = doc.dateModified
-                        except:
-                            pass
-
-                        associated_drawings.append({
-                            'drawing': drawing,
-                            'document': doc,
-                            'name': doc.name,
-                            'modification_date': modification_date
-                        })
+                    associated_drawings.append({
+                        'drawing': drawing,
+                        'document': drawing_doc,
+                        'name': doc.name,
+                        'modification_date': modification_date
+                    })
 
             except Exception as e:
                 # Skip documents that cause errors, but continue checking others
@@ -1090,13 +1093,12 @@ def get_latest_drawing(drawings_list):
 
     return None
 
-def export_drawing_to_pdf(drawing, document, output_path, ui=None):
+def export_drawing_to_pdf(drawing, output_path, ui=None):
     """
     Export a drawing to PDF format.
 
     Args:
         drawing: The Drawing object to export
-        document: The Document containing the drawing
         output_path: Full path where the PDF file should be saved
         ui: Optional UI object for error messages
 
