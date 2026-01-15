@@ -730,7 +730,7 @@ def export_flat_pattern_to_dxf(component, flat_pattern, output_path, design):
         return (False, error_msg)
 
 def handle_external_component(comp_info, original_document, original_design, filename_manager,
-                             export_result, current_index, total_count, ui, export_drawings=False):
+                             export_result, current_index, total_count, ui, export_drawings=False, drawings_folder=None):
     """
     Task 7: External Component Handling
 
@@ -752,6 +752,7 @@ def handle_external_component(comp_info, original_document, original_design, fil
         total_count: Total number of components to process
         ui: UI object for messages
         export_drawings: Boolean indicating whether to export associated drawings
+        drawings_folder: Path to folder containing drawing files (if export_drawings is True)
 
     Returns:
         bool: True if export was successful, False otherwise
@@ -809,9 +810,52 @@ def handle_external_component(comp_info, original_document, original_design, fil
 
             # Export associated drawings if requested
             if export_drawings:
+                # #region agent log - hypothesis B: Drawing export decision
+                try:
+                    import json
+                    import time
+                    with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({
+                            "id": f"log_{int(time.time()*1000)}_drawing_decision",
+                            "timestamp": int(time.time()*1000),
+                            "location": "dxfExport_westcorte.py:825",
+                            "message": "Starting drawing export for component",
+                            "data": {"component_name": component_name, "export_drawings": export_drawings},
+                            "sessionId": "debug-session",
+                            "runId": "initial",
+                            "hypothesisId": "B"
+                        }) + '\n')
+                except:
+                    pass
+                # #endregion
+
                 try:
                     # Find drawings associated with this component
-                    associated_drawings = find_associated_drawings(component, app, ui=None)
+                    associated_drawings = find_associated_drawings(component, drawings_folder, app, ui=None)
+
+                    # #region agent log - hypothesis B: Drawing discovery results (external)
+                    try:
+                        import json
+                        import time
+                        drawing_names = [d['name'] for d in associated_drawings]
+                        with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({
+                                "id": f"log_{int(time.time()*1000)}_drawing_found_ext",
+                                "timestamp": int(time.time()*1000),
+                                "location": "dxfExport_westcorte.py:835",
+                                "message": "Drawing discovery results (external component)",
+                                "data": {
+                                    "component_name": component_name,
+                                    "num_drawings_found": len(associated_drawings),
+                                    "drawing_names": drawing_names
+                                },
+                                "sessionId": "debug-session",
+                                "runId": "initial",
+                                "hypothesisId": "B"
+                            }) + '\n')
+                    except:
+                        pass
+                    # #endregion
 
                     if associated_drawings:
                         # Get the latest drawing
@@ -832,6 +876,13 @@ def handle_external_component(comp_info, original_document, original_design, fil
                                 export_result.record_drawing_success(component_name, latest_drawing['name'], drawing_export_path)
                             else:
                                 export_result.record_drawing_failure(component_name, latest_drawing['name'], drawing_error or 'Drawing export failed')
+
+                            # Close the drawing document to clean up
+                            try:
+                                latest_drawing['document'].close(False)  # False = don't save
+                            except:
+                                pass  # Ignore errors when closing
+
                         # If no latest drawing found, silently skip (not an error)
                     # If no associated drawings found, silently skip (not an error)
                 except Exception as e:
@@ -866,7 +917,7 @@ def handle_external_component(comp_info, original_document, original_design, fil
             pass
 
 def handle_internal_component(comp_info, original_active_component, design, filename_manager,
-                             export_result, current_index, total_count, ui, export_drawings=False):
+                             export_result, current_index, total_count, ui, export_drawings=False, drawings_folder=None):
     """
     Task 8: Internal Component Handling
     
@@ -888,6 +939,7 @@ def handle_internal_component(comp_info, original_active_component, design, file
         total_count: Total number of components to process
         ui: UI object for messages
         export_drawings: Boolean indicating whether to export associated drawings
+        drawings_folder: Path to folder containing drawing files (if export_drawings is True)
         
     Returns:
         bool: True if export was successful, False otherwise
@@ -941,7 +993,31 @@ def handle_internal_component(comp_info, original_active_component, design, file
                 try:
                     app = adsk.core.Application.get()
                     # Find drawings associated with this component
-                    associated_drawings = find_associated_drawings(component, app, ui=None)
+                    associated_drawings = find_associated_drawings(component, drawings_folder, app, ui=None)
+
+                    # #region agent log - hypothesis B: Drawing discovery results (internal)
+                    try:
+                        import json
+                        import time
+                        drawing_names = [d['name'] for d in associated_drawings]
+                        with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({
+                                "id": f"log_{int(time.time()*1000)}_drawing_found_int",
+                                "timestamp": int(time.time()*1000),
+                                "location": "dxfExport_westcorte.py:956",
+                                "message": "Drawing discovery results (internal component)",
+                                "data": {
+                                    "component_name": component_name,
+                                    "num_drawings_found": len(associated_drawings),
+                                    "drawing_names": drawing_names
+                                },
+                                "sessionId": "debug-session",
+                                "runId": "initial",
+                                "hypothesisId": "B"
+                            }) + '\n')
+                    except:
+                        pass
+                    # #endregion
 
                     if associated_drawings:
                         # Get the latest drawing
@@ -962,6 +1038,13 @@ def handle_internal_component(comp_info, original_active_component, design, file
                                 export_result.record_drawing_success(component_name, latest_drawing['name'], drawing_export_path)
                             else:
                                 export_result.record_drawing_failure(component_name, latest_drawing['name'], drawing_error or 'Drawing export failed')
+
+                            # Close the drawing document to clean up
+                            try:
+                                latest_drawing['document'].close(False)  # False = don't save
+                            except:
+                                pass  # Ignore errors when closing
+
                         # If no latest drawing found, silently skip (not an error)
                     # If no associated drawings found, silently skip (not an error)
                 except Exception as e:
@@ -978,30 +1061,254 @@ def handle_internal_component(comp_info, original_active_component, design, file
         export_result.record_failure(component_name, error_msg)
         return False
 
-def find_associated_drawings(component, app, ui=None):
+def find_associated_drawings(component, drawings_folder, app, ui=None):
     """
-    Find all drawings that reference the given component.
+    Find drawing files that are associated with the given component by matching names.
 
     Args:
         component: The Component to find drawings for
+        drawings_folder: Path to folder containing .f2d drawing files
         app: The Fusion 360 Application object
         ui: Optional UI object for error messages
 
     Returns:
-        list: List of Drawing objects that reference this component
+        list: List of Drawing objects that were opened and match this component
               Each entry is a dict with:
               - 'drawing': Drawing - The drawing object
               - 'document': DrawingDocument - The document containing the drawing
               - 'name': str - The drawing name
-              - 'modification_date': datetime or None - Last modification date if available
+              - 'file_path': str - Full path to the drawing file
     """
+    # #region agent log - hypothesis A: File system drawing discovery
+    try:
+        import json
+        import time
+        with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({
+                "id": f"log_{int(time.time()*1000)}_find_drawings",
+                "timestamp": int(time.time()*1000),
+                "location": "dxfExport_westcorte.py:983",
+                "message": "Starting find_associated_drawings (file system approach)",
+                "data": {
+                    "component_name": getattr(component, 'name', 'unknown'),
+                    "drawings_folder": drawings_folder
+                },
+                "sessionId": "debug-session",
+                "runId": "initial",
+                "hypothesisId": "A"
+            }) + '\n')
+    except:
+        pass
+    # #endregion
+
     associated_drawings = []
 
+    if not drawings_folder:
+        return associated_drawings
+
+    # #region agent log - hypothesis D: Document iteration
     try:
-        # Iterate through all open documents
-        for doc in app.documents:
+        import json
+        import time
+        docs_list = []
+        for i, doc in enumerate(app.documents):
+            try:
+                doc_info = {
+                    "index": i,
+                    "name": doc.name,
+                    "has_products": hasattr(doc, 'products'),
+                    "product_count": len(list(doc.products)) if hasattr(doc, 'products') else 0
+                }
+                if hasattr(doc, 'products'):
+                    products_info = []
+                    for j, product in enumerate(doc.products):
+                        product_info = {
+                            "product_index": j,
+                            "product_type": product.productType if hasattr(product, 'productType') else 'unknown'
+                        }
+                        products_info.append(product_info)
+                    doc_info["products"] = products_info
+                docs_list.append(doc_info)
+            except:
+                docs_list.append({"index": i, "error": "failed to get doc info"})
+
+        with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({
+                "id": f"log_{int(time.time()*1000)}_doc_iteration",
+                "timestamp": int(time.time()*1000),
+                "location": "dxfExport_westcorte.py:1005",
+                "message": "Document iteration results",
+                "data": {"total_docs": len(docs_list), "docs": docs_list},
+                "sessionId": "debug-session",
+                "runId": "initial",
+                "hypothesisId": "D"
+            }) + '\n')
+    except:
+        pass
+    # #endregion
+
+    try:
+        import os
+
+        # Get component name for matching
+        component_name = component.name.lower()
+
+        # Scan the drawings folder for .f2d files
+        for filename in os.listdir(drawings_folder):
+            if filename.lower().endswith('.f2d'):
+                # Check if the drawing filename matches the component name
+                drawing_name_base = os.path.splitext(filename)[0].lower()
+
+                # Match if component name is contained in drawing name or vice versa
+                # This allows for flexible naming (e.g., "Component" matches "Component Drawing")
+                name_matches = (
+                    component_name in drawing_name_base or
+                    drawing_name_base in component_name
+                )
+
+                # #region agent log - hypothesis A: Filename matching
+                try:
+                    import json
+                    import time
+                    with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({
+                            "id": f"log_{int(time.time()*1000)}_filename_match",
+                            "timestamp": int(time.time()*1000),
+                            "location": "dxfExport_westcorte.py:1015",
+                            "message": "Checking filename match",
+                            "data": {
+                                "component_name": component_name,
+                                "drawing_filename": filename,
+                                "drawing_name_base": drawing_name_base,
+                                "name_matches": name_matches
+                            },
+                            "sessionId": "debug-session",
+                            "runId": "initial",
+                            "hypothesisId": "A"
+                        }) + '\n')
+                except:
+                    pass
+                # #endregion
+
+                if name_matches:
+                    # Found a matching drawing file, try to open it
+                    drawing_path = os.path.join(drawings_folder, filename)
+
+                    try:
+                        # Open the drawing document
+                        # #region agent log - hypothesis A: Opening drawing
+                        try:
+                            import json
+                            import time
+                            with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                                f.write(json.dumps({
+                                    "id": f"log_{int(time.time()*1000)}_opening_drawing",
+                                    "timestamp": int(time.time()*1000),
+                                    "location": "dxfExport_westcorte.py:1025",
+                                    "message": "Attempting to open drawing file",
+                                    "data": {
+                                        "drawing_path": drawing_path,
+                                        "component_name": component.name
+                                    },
+                                    "sessionId": "debug-session",
+                                    "runId": "initial",
+                                    "hypothesisId": "A"
+                                }) + '\n')
+                        except:
+                            pass
+                        # #endregion
+
+                        drawing_doc = app.documents.open(drawing_path, True)  # True = visible
+
+                        if drawing_doc and drawing_doc.isDrawing:
+                            # Get the drawing product
+                            drawing_product = drawing_doc.products.itemByProductType("DrawingProductType")
+                            if drawing_product:
+                                drawing = adsk.drawing.Drawing.cast(drawing_product)
+                                if drawing:
+                                    associated_drawings.append({
+                                        'drawing': drawing,
+                                        'document': drawing_doc,
+                                        'name': drawing_doc.name,
+                                        'file_path': drawing_path
+                                    })
+
+                                    # #region agent log - hypothesis A: Successfully opened drawing
+                                    try:
+                                        import json
+                                        import time
+                                        with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                                            f.write(json.dumps({
+                                                "id": f"log_{int(time.time()*1000)}_drawing_opened",
+                                                "timestamp": int(time.time()*1000),
+                                                "location": "dxfExport_westcorte.py:1045",
+                                                "message": "Successfully opened drawing",
+                                                "data": {
+                                                    "drawing_name": drawing_doc.name,
+                                                    "component_name": component.name
+                                                },
+                                                "sessionId": "debug-session",
+                                                "runId": "initial",
+                                                "hypothesisId": "A"
+                                            }) + '\n')
+                                    except:
+                                        pass
+                                    # #endregion
+
+                    except Exception as e:
+                        # Failed to open this drawing file
+                        # #region agent log - hypothesis A: Failed to open drawing
+                        try:
+                            import json
+                            import time
+                            with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                                f.write(json.dumps({
+                                    "id": f"log_{int(time.time()*1000)}_drawing_open_failed",
+                                    "timestamp": int(time.time()*1000),
+                                    "location": "dxfExport_westcorte.py:1050",
+                                    "message": "Failed to open drawing file",
+                                    "data": {
+                                        "drawing_path": drawing_path,
+                                        "error": str(e),
+                                        "component_name": component.name
+                                    },
+                                    "sessionId": "debug-session",
+                                    "runId": "initial",
+                                    "hypothesisId": "A"
+                                }) + '\n')
+                        except:
+                            pass
+                        # #endregion
+
+                        if ui:
+                            ui.messageBox(f'Warning: Could not open drawing file {filename}: {str(e)}')
+
+    except Exception as e:
+        if ui:
+            ui.messageBox(f'Error searching for associated drawings: {str(e)}')
+
+    return associated_drawings
             try:
                 # Check if document has a drawing product
+                # #region agent log - hypothesis D: Product type check
+                try:
+                    import json
+                    import time
+                    with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({
+                            "id": f"log_{int(time.time()*1000)}_product_check",
+                            "timestamp": int(time.time()*1000),
+                            "location": "dxfExport_westcorte.py:1042",
+                            "message": "Checking for drawing product",
+                            "data": {"doc_name": doc.name},
+                            "sessionId": "debug-session",
+                            "runId": "initial",
+                            "hypothesisId": "D"
+                        }) + '\n')
+                except:
+                    pass
+                # #endregion
+
                 drawing_product = doc.products.itemByProductType("DrawingProductType")
                 if not drawing_product:
                     continue
@@ -1009,20 +1316,104 @@ def find_associated_drawings(component, app, ui=None):
                 # Cast to Drawing
                 drawing = adsk.drawing.Drawing.cast(drawing_product)
                 if not drawing:
+                    # #region agent log - hypothesis D: Drawing cast failed
+                    try:
+                        import json
+                        import time
+                        with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({
+                                "id": f"log_{int(time.time()*1000)}_drawing_cast_fail",
+                                "timestamp": int(time.time()*1000),
+                                "location": "dxfExport_westcorte.py:1052",
+                                "message": "Drawing cast failed",
+                                "data": {"doc_name": doc.name},
+                                "sessionId": "debug-session",
+                                "runId": "initial",
+                                "hypothesisId": "D"
+                            }) + '\n')
+                    except:
+                        pass
+                    # #endregion
                     continue
 
                 # Get the DrawingDocument and check its references
                 drawing_doc = drawing.parentDocument
                 if not drawing_doc:
+                    # #region agent log - hypothesis D: No parent document
+                    try:
+                        import json
+                        import time
+                        with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({
+                                "id": f"log_{int(time.time()*1000)}_no_parent_doc",
+                                "timestamp": int(time.time()*1000),
+                                "location": "dxfExport_westcorte.py:1058",
+                                "message": "No parent document for drawing",
+                                "data": {"doc_name": doc.name},
+                                "sessionId": "debug-session",
+                                "runId": "initial",
+                                "hypothesisId": "D"
+                            }) + '\n')
+                    except:
+                        pass
+                    # #endregion
                     continue
 
                 # Check if this drawing references our component's document
                 component_doc = component.parentDocument
                 drawing_references_component = False
 
+                # #region agent log - hypothesis A: Document reference checking
+                try:
+                    import json
+                    import time
+                    with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({
+                            "id": f"log_{int(time.time()*1000)}_check_refs",
+                            "timestamp": int(time.time()*1000),
+                            "location": "dxfExport_westcorte.py:1024",
+                            "message": "Checking drawing references",
+                            "data": {
+                                "drawing_name": doc.name,
+                                "component_doc": getattr(component_doc, 'name', 'unknown') if component_doc else None,
+                                "num_refs": len(list(drawing_doc.allDocumentReferences))
+                            },
+                            "sessionId": "debug-session",
+                            "runId": "initial",
+                            "hypothesisId": "A"
+                        }) + '\n')
+                except:
+                    pass
+                # #endregion
+
                 # Use allDocumentReferences to check if the drawing references our component's document
                 for doc_ref in drawing_doc.allDocumentReferences:
                     try:
+                        # #region agent log - hypothesis A: Individual reference check
+                        try:
+                            import json
+                            import time
+                            ref_name = getattr(doc_ref.dataFile, 'name', 'unknown') if doc_ref.dataFile else 'no-datafile'
+                            comp_doc_name = getattr(component_doc, 'name', 'unknown') if component_doc else 'no-comp-doc'
+                            with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                                f.write(json.dumps({
+                                    "id": f"log_{int(time.time()*1000)}_ref_check",
+                                    "timestamp": int(time.time()*1000),
+                                    "location": "dxfExport_westcorte.py:1026",
+                                    "message": "Checking individual reference",
+                                    "data": {
+                                        "ref_name": ref_name,
+                                        "comp_doc_name": comp_doc_name,
+                                        "match": doc_ref.dataFile == component_doc.dataFile if (doc_ref.dataFile and component_doc) else False
+                                    },
+                                    "sessionId": "debug-session",
+                                    "runId": "initial",
+                                    "hypothesisId": "A"
+                                }) + '\n')
+                        except:
+                            pass
+                        # #endregion
+
                         if doc_ref.dataFile and component_doc and doc_ref.dataFile == component_doc.dataFile:
                             drawing_references_component = True
                             break
@@ -1061,37 +1452,19 @@ def find_associated_drawings(component, app, ui=None):
 
 def get_latest_drawing(drawings_list):
     """
-    Get the most recently modified drawing from a list.
+    Get the first drawing from a list (since we now open drawings on demand).
 
     Args:
         drawings_list: List of drawing dicts from find_associated_drawings()
 
     Returns:
-        dict or None: The latest drawing dict, or None if list is empty
+        dict or None: The first drawing dict, or None if list is empty
     """
     if not drawings_list:
         return None
 
-    # Try to sort by modification date (if available)
-    drawings_with_dates = []
-    drawings_without_dates = []
-
-    for drawing_info in drawings_list:
-        if drawing_info['modification_date']:
-            drawings_with_dates.append(drawing_info)
-        else:
-            drawings_without_dates.append(drawing_info)
-
-    # Sort drawings with dates by modification date (most recent first)
-    if drawings_with_dates:
-        drawings_with_dates.sort(key=lambda x: x['modification_date'], reverse=True)
-        return drawings_with_dates[0]
-
-    # If no modification dates available, return the first one
-    if drawings_without_dates:
-        return drawings_without_dates[0]
-
-    return None
+    # Since we're opening drawings on demand, just return the first match
+    return drawings_list[0]
 
 def export_drawing_to_pdf(drawing, output_path, ui=None):
     """
@@ -1105,6 +1478,25 @@ def export_drawing_to_pdf(drawing, output_path, ui=None):
     Returns:
         tuple: (success: bool, error_message: str or None)
     """
+    # #region agent log - hypothesis C: Drawing export setup
+    try:
+        import json
+        import time
+        with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({
+                "id": f"log_{int(time.time()*1000)}_export_setup",
+                "timestamp": int(time.time()*1000),
+                "location": "dxfExport_westcorte.py:1112",
+                "message": "Starting drawing PDF export",
+                "data": {"output_path": output_path},
+                "sessionId": "debug-session",
+                "runId": "initial",
+                "hypothesisId": "C"
+            }) + '\n')
+    except:
+        pass
+    # #endregion
+
     try:
         # Access the drawing's export manager
         exportMgr = drawing.exportManager
@@ -1117,7 +1509,45 @@ def export_drawing_to_pdf(drawing, output_path, ui=None):
         pdfOptions.useLineWeights = True
 
         # Execute the export
+        # #region agent log - hypothesis C: Export execution
+        try:
+            import json
+            import time
+            with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({
+                    "id": f"log_{int(time.time()*1000)}_export_exec",
+                    "timestamp": int(time.time()*1000),
+                    "location": "dxfExport_westcorte.py:1132",
+                    "message": "Executing PDF export",
+                    "data": {"has_exportMgr": exportMgr is not None},
+                    "sessionId": "debug-session",
+                    "runId": "initial",
+                    "hypothesisId": "C"
+                }) + '\n')
+        except:
+            pass
+        # #endregion
+
         exportMgr.execute(pdfOptions)
+
+        # #region agent log - hypothesis C: Export success
+        try:
+            import json
+            import time
+            with open('/Users/leepeffer/Documents/github/fusion_dxf-batch-export/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({
+                    "id": f"log_{int(time.time()*1000)}_export_success",
+                    "timestamp": int(time.time()*1000),
+                    "location": "dxfExport_westcorte.py:1135",
+                    "message": "PDF export completed successfully",
+                    "data": {"file_exists": os.path.exists(output_path)},
+                    "sessionId": "debug-session",
+                    "runId": "initial",
+                    "hypothesisId": "C"
+                }) + '\n')
+        except:
+            pass
+        # #endregion
 
         return (True, None)
 
@@ -1177,6 +1607,21 @@ def run(context):
         )
 
         export_drawings = (export_drawings_result == adsk.core.DialogResults.DialogYes)
+
+        drawings_folder = None
+        if export_drawings:
+            # Ask user for drawings directory
+            drawings_folder_dlg = ui.createFolderDialog()
+            drawings_folder_dlg.title = 'Select Folder Containing Drawing Files (.f2d)'
+            drawings_folder_dlg.initialDirectory = outputFolder  # Default to same as DXF folder
+
+            dlgResult = drawings_folder_dlg.showDialog()
+            if dlgResult != adsk.core.DialogResults.DialogOK:
+                # User cancelled drawings folder selection
+                export_drawings = False
+                drawings_folder = None
+            else:
+                drawings_folder = drawings_folder_dlg.folder
 
         # 2. Folder Selection Dialog (Early - before any processing)
         folderDlg = ui.createFolderDialog()
@@ -1249,7 +1694,8 @@ def run(context):
                         current_index=index,
                         total_count=total_count,
                         ui=ui,
-                        export_drawings=export_drawings
+                        export_drawings=export_drawings,
+                        drawings_folder=drawings_folder
                     )
                 else:
                     # Task 8: Handle internal component
@@ -1262,7 +1708,8 @@ def run(context):
                         current_index=index,
                         total_count=total_count,
                         ui=ui,
-                        export_drawings=export_drawings
+                        export_drawings=export_drawings,
+                        drawings_folder=drawings_folder
                     )
             except Exception as e:
                 # Catch any unexpected errors and continue processing
